@@ -1,0 +1,41 @@
+workflow:
+  rules:
+  - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+variables:
+  OUTPUT_DIR: 'output'
+  BUILD_CONFIG: 'Release'
+
+buildsln:
+  stage: build
+  image: mcr.microsoft.com/dotnet/sdk:6.0-focal
+  script:
+    - dotnet build -o $OUTPUT_DIR -c $BUILD_CONFIG
+  artifacts:
+    paths:
+      - $OUTPUT_DIR
+
+xunit:
+  stage: test
+  image: mcr.microsoft.com/dotnet/sdk:6.0-focal
+  variables:
+    # Also used in CreateTables.sh
+    SERVER_NAME: 'mssql'
+    SA_PASSWORD: 'TestPassword1'
+    ACCEPT_EULA: 'Y'
+  services:
+    - name: mcr.microsoft.com/mssql/server:2019-latest
+      alias: mssql
+        
+  script:
+    # install sqlcmd for add tables
+    - apt-get update
+    - apt-get install -y gnupg
+    - curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+    - curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | tee /etc/apt/sources.list.d/msprod.list
+    - apt-get update
+    - apt-get install -y mssql-tools unixodbc-dev
+    # Create DBs
+    - bash "ci/TestDB/CreateTables.sh"
+    # Run XUnit
+    - dotnet test -o $OUTPUT_DIR -c $BUILD_CONFIG
